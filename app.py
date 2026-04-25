@@ -1,3 +1,4 @@
+import ssl
 import streamlit as st #Python library for creating web apps
 import pandas as pd #Python library for data manipulation and analysis
 from prophet import Prophet #Facebook's library for time series forecasting
@@ -59,3 +60,33 @@ master_df = master_df.ffill().bfill()#Do a self study on this method, it is a co
 if master_df.empty:
     st.error("The merged dataset is empty. Check if the date ranges of the 3 sources overlap.")
     st.stop()
+
+st.sidebar.header("Forecast Settings")
+horizon = st.sidebar.slider("Forecast Horizon (Months)", 1, 12, 6)
+google_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
+st.sidebar.markdown("[Get an API key here](https://aistudio.google.com/app/apikey)")
+st.sidebar.divider()
+
+# --- MODELING (Prophet) ---
+# We wrap this in a try-block just in case of remaining data inconsistencies
+
+try:
+    m = Prophet(changepoint_prior_scale=0.05)
+    m.add_regressor('fuel')
+    m.add_regressor('electricity')
+    m.fit(master_df)
+
+    future = m.make_future_dataframe(periods = horizon,freq = 'MS')
+    # Carry forward the last known values for regressors into the future
+    future['fuel'] = master_df['fuel'].iloc[-1]
+    future['electricity'] = master_df['electricity'].iloc[-1]
+    forecast = m.predict(future)
+
+    # --- VISUALIZATION ---
+    fig = px.line(forecast, x='ds', y='yhat', title="Projected Inflation (YoY %)", 
+                  labels={'yhat': 'Inflation (%)', 'ds': 'Date'})
+    fig.add_scatter(x=master_df['ds'], y=master_df['y'], name="Historical Actual", mode='markers')
+    st.plotly_chart(fig, use_container_width=True)
+    
+except Exception as e:
+    st.error(f"Modeling Error: {e}")
