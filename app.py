@@ -90,3 +90,37 @@ try:
     
 except Exception as e:
     st.error(f"Modeling Error: {e}")
+
+# --- GEMINI INSIGHTS ---
+st.subheader("🤖 Gemini Economic Analysis")
+
+if google_api_key:
+    try:
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key)
+        
+        curr_val = master_df['y'].iloc[-1]
+        pred_val = forecast['yhat'].iloc[-1]
+        
+        prompt = f"""
+        You are a Malaysian economic expert. 
+        Current Inflation: {curr_val:.2f}%
+        Predicted Inflation in {horizon} months: {pred_val:.2f}%
+        
+        Factors considered: RON95 fuel prices and industrial electricity consumption.
+        Provide a professional summary of the outlook for Malaysian households.
+        Include a mention of 'B40/M40' groups if relevant.
+        """
+        
+        if st.button("Generate AI Insight"):
+            with st.spinner("Analyzing..."):
+                response = llm.invoke([HumanMessage(content=prompt)])
+                st.info(response.content)
+    except Exception as e:
+        st.error(f"Gemini Error: {e}")
+else:
+    st.warning("Please enter your API key to enable AI analysis.")
+
+# --- DATA PREVIEW ---
+with st.expander("Explore Data Preview"):
+    st.write("Last 5 months of merged data (Cleaned):")
+    st.dataframe(master_df.tail())
