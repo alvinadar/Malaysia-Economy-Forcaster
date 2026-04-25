@@ -1,0 +1,9 @@
+# Standard library (ssl) does not need to be listed
+streamlit
+pandas
+prophet
+plotly
+langchain-google-genai
+langchain-core
+pyarrow
+fastparquet
