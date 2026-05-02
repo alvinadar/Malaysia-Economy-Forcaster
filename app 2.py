@@ -40,12 +40,15 @@ except Exception as e:
 
 #---Preprocessing  fuel data---
 #Resample weekly fuel to mothly average 
-df_fuel_m = df_fuel.set_index('date').resample("MS").mean(numeric_only=True).reset_index()
+df_fuel_m =df_fuel.set_index('date').resample("MS").mean(numeric_only=True).reset_index()
 
 # Merge datasets
 # Note: Using 'inner' join ensures we only use dates where ALL data points exist
-master_df = df_cpi[['date', 'inflation_yoy']].merge(df_fuel_m[['date', 'ron95']], on='date', how='inner')
-master_df = master_df.merge(df_elec[['date', 'consumption']], on='date', how='inner')
+master_df = (
+    df_cpi[["date", "inflation_yoy", "inflation_mom"]]
+    .merge(df_fuel_m[["date", "ron95", "ron97", "diesel"]], on="date", how="inner")
+    .merge(df_elec[["date", "consumption"]], on="date", how="inner")
+)
 
 #For prohet model we did not use our standard column for the model, we change the model based on 'ds', 'y' format
 #Use the documentation for more details https://facebook.github.io/prophet/docs/quick_start.html#python-api
@@ -66,7 +69,48 @@ horizon = st.sidebar.slider("Forecast Horizon (Months)", 1, 12, 6)
 google_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
 st.sidebar.markdown("[Get an API key here](https://aistudio.google.com/app/apikey)")
 st.sidebar.divider()
+st.sidebar.caption(f"Data covers **{master_df['ds'].min().strftime('%b %Y')}** – **{master_df['ds'].max().strftime('%b %Y')}**")
+st.sidebar.caption(f"**{len(master_df)} monthly observations** after merging all sources.")
 
+
+#KPI Summary Row 
+latest = master_df.iloc[-1]#Get the latest data point for current value
+year_ago = master_df[master_df["ds"] <= latest["ds"] - pd.DateOffset(months=12)].iloc[-1] \
+    if len(master_df) > 12 else master_df.iloc[0]
+
+col1, col2, col3, col4 = st.columns(4)#Create 4 columns for KPIs
+
+with col1:
+    delta_inf = latest["y"] - year_ago["y"]#The comparison of current inflation with 12 months ago
+    st.metric(
+        "Current Inflation (YoY)",
+        f"{latest['y']:.1f}%",
+        f"{delta_inf:+.1f} pp vs 12 months ago",
+    )
+with col2:
+    avg_fuel = master_df["fuel"].mean()
+    st.metric(
+        "RON95 Fuel Price",
+        f"RM {latest['fuel']:.2f} / litre",
+        f"{latest['fuel'] - avg_fuel:+.2f} vs historical avg",
+    )
+with col3:
+    delta_elec = ((latest["electricity"] - year_ago["electricity"]) / year_ago["electricity"]) * 100
+    st.metric(
+        "Electricity Demand",
+        f"{latest['electricity']:,.0f} GWh",
+        f"{delta_elec:+.1f}% YoY",
+    )
+with col4:
+    mom_val = latest.get("inflation_mom", np.nan)
+    st.metric(
+        "Monthly Price Change",
+        f"{mom_val:+.1f}%" if not np.isnan(mom_val) else "N/A",
+        "Month-on-month (MoM)",
+        delta_color="inverse",
+    )
+
+st.divider()
 # --- MODELING (Prophet) ---
 # We wrap this in a try-block just in case of remaining data inconsistencies
 
