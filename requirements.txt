@@ -1,0 +1,8 @@
+streamlit
+pandas
+prophet
+plotly
+langchain-google-genai
+langchain-core
+pyarrow
+fastparquet
