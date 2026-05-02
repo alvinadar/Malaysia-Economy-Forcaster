@@ -2,6 +2,7 @@ import ssl
 import streamlit as st #Python library for creating web apps
 import pandas as pd #Python library for data manipulation and analysis
 from prophet import Prophet #Facebook's library for time series forecasting
+import plotly.graph_objects as go #Python library for creating interactive visualizations
 import plotly.express as px #Python library for interactive data visualization 
 from langchain_google_genai import ChatGoogleGenerativeAI #Langchain library for integrating Google Generative AI
 from langchain_core.messages import HumanMessage #Langchain library for handling human messages
@@ -12,6 +13,7 @@ st.set_page_config(page_title="Malaysia Economic Forecaster", layout="wide",page
 st.title("🇲🇾 Malaysia Economic Forecaster")
 
 #---Data Extraction---
+@st.cache_data(ttl =3600,show_spinner="Fetching latest economic data from goverment portals...")
 def load_data():
     #1. CPI Data(Monthly)
     df_cpi = pd.read_parquet('https://storage.dosm.gov.my/cpi/cpi_2d_inflation.parquet')
@@ -147,7 +149,69 @@ elif pred_end > 2.5:
     risk_icon, risk_label = "🟡", "Moderate"
 else:
     risk_icon, risk_label = "🟢", "Low"
-    
+
+
+#Forcast Chart 
+st.subheader("📈 Inflation Forecast")
+st.caption(
+    "Dots show actual historical inflation. The line is the model's projection. "
+    "The shaded band shows the 80% range of likely outcomes."
+)
+
+fig_fc = go.Figure()
+
+if show_intervals:
+    fig_fc.add_trace(go.Scatter(
+        x=pd.concat([forecast["ds"], forecast["ds"][::-1]]),
+        y=pd.concat([forecast["yhat_upper"], forecast["yhat_lower"][::-1]]),
+        fill="toself",
+        fillcolor="rgba(99, 110, 250, 0.12)",
+        line=dict(color="rgba(0,0,0,0)"),
+        name="80% Confidence Range",
+        hoverinfo="skip",
+    ))
+
+fig_fc.add_trace(go.Scatter(
+    x=forecast["ds"], y=forecast["yhat"],
+    line=dict(color="#636EFA", width=2.5),
+    name="Forecast",
+))
+
+fig_fc.add_trace(go.Scatter(
+    x=master_df["ds"], y=master_df["y"],
+    mode="markers",
+    marker=dict(color="#EF553B", size=5),
+    name="Actual Inflation",
+))
+
+fig_fc.add_vline(
+    x=forecast_start.timestamp() * 1000,
+    line_dash="dash",
+    line_color="gray",
+    annotation_text="  Forecast begins",
+    annotation_position="top right",
+)
+
+fig_fc.update_layout(
+    xaxis_title="Date",
+    yaxis_title="Inflation Rate — Year-on-Year (%)",
+    hovermode="x unified",
+    legend=dict(orientation="h", y=-0.25),
+    height=430,
+    margin=dict(t=20),
+)
+st.plotly_chart(fig_fc, use_container_width=True)
+
+# Plain-language risk summary
+st.info(
+    f"**What this means:** Over the next **{horizon} month(s)**, inflation is projected to "
+    f"**{trend_word}** from **{latest['y']:.1f}%** to approximately **{pred_end:.1f}%** "
+    f"(likely range: {future_rows['yhat_lower'].iloc[-1]:.1f}% – {future_rows['yhat_upper'].iloc[-1]:.1f}%). "
+    f"Inflation outlook: {risk_icon} **{risk_label} Risk**"
+)
+
+st.divider()
+
 # --- GEMINI INSIGHTS ---
 st.subheader("🤖 Gemini Economic Analysis")
 
