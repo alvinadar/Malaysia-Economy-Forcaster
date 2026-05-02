@@ -115,10 +115,15 @@ st.divider()
 # We wrap this in a try-block just in case of remaining data inconsistencies
 
 try:
-    m = Prophet(changepoint_prior_scale=0.05)
+    m = Prophet(
+        changepoint_prior_scale=0.05,#Defines the sensitivity of the model.(0,01 is most sensitive, 0.1 is least sensitive)
+        yearly_seasonality=True,#Normally will spike during festive seasons or there are a specific incident 
+        weekly_seasonality=False,
+        daily_seasonality=False,
+        interval_width=0.08)
     m.add_regressor('fuel')
     m.add_regressor('electricity')
-    m.fit(master_df)
+    m.fit(master_df[['ds', 'y', 'fuel', 'electricity']])
 
     future = m.make_future_dataframe(periods = horizon,freq = 'MS')
     # Carry forward the last known values for regressors into the future
@@ -126,15 +131,23 @@ try:
     future['electricity'] = master_df['electricity'].iloc[-1]
     forecast = m.predict(future)
 
-    # --- VISUALIZATION ---
-    fig = px.line(forecast, x='ds', y='yhat', title="Projected Inflation (YoY %)", 
-                  labels={'yhat': 'Inflation (%)', 'ds': 'Date'})
-    fig.add_scatter(x=master_df['ds'], y=master_df['y'], name="Historical Actual", mode='markers')
-    st.plotly_chart(fig, use_container_width=True)
-    
-except Exception as e:
-    st.error(f"Modeling Error: {e}")
+except Exception as exc:
+    st.error(f"Forecasting model error: {exc}")
+    st.stop()
 
+forecast_start = master_df["ds"].max()  
+future_rows = forecast[forecast["ds"] > forecast_start]
+pred_end = future_rows["yhat"].iloc[-1]
+trend_word = "rise" if pred_end > latest["y"] else "fall"
+
+# Risk label
+if pred_end > 4.0:
+    risk_icon, risk_label = "🔴", "High"
+elif pred_end > 2.5:
+    risk_icon, risk_label = "🟡", "Moderate"
+else:
+    risk_icon, risk_label = "🟢", "Low"
+    
 # --- GEMINI INSIGHTS ---
 st.subheader("🤖 Gemini Economic Analysis")
 
