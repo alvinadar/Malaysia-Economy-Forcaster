@@ -1,4 +1,5 @@
 import ssl
+import requests
 import streamlit as st #Python library for creating web apps
 import pandas as pd #Python library for data manipulation and analysis
 from prophet import Prophet #Facebook's library for time series forecasting
@@ -12,33 +13,58 @@ st.set_page_config(page_title="Malaysia Economic Forecaster", layout="wide",page
 # --- TITLE ---
 st.title("🇲🇾 Malaysia Economic Forecaster")
 
+TIMEOUT = 30 #ADD SO THAT WE CAN PREVENT THE APP FROM HANGING IN CASE OF SLOW RESPONSES FROM DATA SOURCES OR API
+def _fetch_parquet(url: str) -> pd.DataFrame:
+    """Download a parquet file with a hard timeout and return a DataFrame."""
+    try:
+        resp = requests.get(url, timeout=TIMEOUT)
+        resp.raise_for_status()
+        return pd.read_parquet(io.BytesIO(resp.content))
+    except requests.exceptions.Timeout:
+        raise TimeoutError(
+            f"Request timed out after {TIMEOUT}s fetching:\n{url}\n"
+            "The government portal may be temporarily slow. Try again in a moment."
+        )
+    except requests.exceptions.ConnectionError:
+        raise ConnectionError(
+            f"Could not reach:\n{url}\n"
+            "Check that the app has internet access and the URL is still valid."
+        )
 #---Data Extraction---
 @st.cache_data(ttl =3600,show_spinner="Fetching latest economic data from goverment portals...")
 def load_data():
-    #1. CPI Data(Monthly)
-    df_cpi = pd.read_parquet('https://storage.dosm.gov.my/cpi/cpi_2d_inflation.parquet')
-    df_cpi['date'] = pd.to_datetime(df_cpi['date'])
-    df_cpi = df_cpi[df_cpi['division'] == 'overall'].copy()
+    """Pull the three core datasets from Malaysian open-data portals."""
 
-    #2. Fuel Price (Weekly Data)
-    df_fuel = pd.read_parquet('https://storage.data.gov.my/commodities/fuelprice.parquet')
-    df_fuel['date'] = pd.to_datetime(df_fuel['date'])
-    if 'series_type' in df_fuel.columns:
-        df_fuel = df_fuel[df_fuel['series_type'] == 'level'].copy()
+    # 1 — CPI / Inflation (Monthly, from DOSM)
+    df_cpi = pd.read_parquet("https://storage.dosm.gov.my/cpi/cpi_2d_inflation.parquet")
+    df_cpi["date"] = pd.to_datetime(df_cpi["date"])
+    df_cpi = df_cpi[df_cpi["division"] == "overall"].copy()
 
-    #3. Electricity Price (Monthly)
-    df_elec = pd.read_parquet('https://storage.data.gov.my/energy/electricity_consumption.parquet')
-    df_elec['date'] = pd.to_datetime(df_elec['date'])
-    df_elec = df_elec[df_elec['sector'] == 'total'].copy()
-    
+    # 2 — Fuel Prices (Weekly, from data.gov.my)
+    df_fuel = pd.read_parquet("https://storage.data.gov.my/commodities/fuelprice.parquet")
+    df_fuel["date"] = pd.to_datetime(df_fuel["date"])
+    if "series_type" in df_fuel.columns:
+        df_fuel = df_fuel[df_fuel["series_type"] == "level"].copy()
+
+    # 3 — Electricity Consumption (Monthly, from data.gov.my)
+    df_elec = pd.read_parquet("https://storage.data.gov.my/energy/electricity_consumption.parquet")
+    df_elec["date"] = pd.to_datetime(df_elec["date"])
+    df_elec = df_elec[df_elec["sector"] == "total"].copy()
+
     return df_cpi, df_fuel, df_elec
 
 #---Error handling for data loading---
 try:
     df_cpi,df_fuel,df_elec = load_data()
-except Exception as e:
-    st.error(f"Error loading data: {e}")
+except (TimeoutError, ConnectionError) as exc:
+    st.error(str(exc))
     st.stop()
+except Exception as exc:
+    st.error(f"Unexpected error loading data: {exc}")
+    st.info("Check your internet connection and try refreshing the page.")
+    st.stop()
+
+
 
 #---Preprocessing  fuel data---
 #Resample weekly fuel to mothly average 
@@ -59,7 +85,7 @@ master_df = master_df.rename(columns={'date': 'ds', 'inflation_yoy': 'y', 'ron95
 # --- THE FIX: HANDLE NaN VALUES ---
 # Prophet will crash if NaNs are present. 
 # We forward fill (carry last value) then backward fill (handle start of series).
-master_df = master_df.ffill().bfill()#Do a self study on this method, it is a common method to handle missing data in time series
+master_df = master_df.ffill().bfill().dropna(subset=["y"])#Do a self study on this method, it is a common method to handle missing data in time series
 
 # Check if we have enough data after cleaning
 if master_df.empty:
