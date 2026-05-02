@@ -18,18 +18,18 @@ def load_data():
     #1. CPI Data(Monthly)
     df_cpi = pd.read_parquet('https://storage.dosm.gov.my/cpi/cpi_2d_inflation.parquet')
     df_cpi['date'] = pd.to_datetime(df_cpi['date'])
-    df_cpi = df_cpi[df_cpi['division'] == 'overall']
+    df_cpi = df_cpi[df_cpi['division'] == 'overall'].copy()
 
     #2. Fuel Price (Weekly Data)
     df_fuel = pd.read_parquet('https://storage.data.gov.my/commodities/fuelprice.parquet')
     df_fuel['date'] = pd.to_datetime(df_fuel['date'])
     if 'series_type' in df_fuel.columns:
-        df_fuel = df_fuel[df_fuel['series_type'] == 'level']
+        df_fuel = df_fuel[df_fuel['series_type'] == 'level'].coppy()
 
     #3. Electricity Price (Monthly)
     df_elec = pd.read_parquet('https://storage.data.gov.my/energy/electricity_consumption.parquet')
     df_elec['date'] = pd.to_datetime(df_elec['date'])
-    df_elec = df_elec[df_elec['sector'] == 'total']
+    df_elec = df_elec[df_elec['sector'] == 'total'].copy()
     
     return df_cpi, df_fuel, df_elec
 
@@ -67,7 +67,8 @@ if master_df.empty:
     st.stop()
 
 st.sidebar.header("Forecast Settings")
-horizon = st.sidebar.slider("Forecast Horizon (Months)", 1, 12, 6)
+horizon = st.sidebar.slider("Forecast Horizon (Months)", 1, 24, 6)
+show_intervals = st.sidebar.checkbox("Show Confidence Intervals", value=True)
 google_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
 st.sidebar.markdown("[Get an API key here](https://aistudio.google.com/app/apikey)")
 st.sidebar.divider()
