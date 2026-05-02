@@ -24,7 +24,7 @@ def load_data():
     df_fuel = pd.read_parquet('https://storage.data.gov.my/commodities/fuelprice.parquet')
     df_fuel['date'] = pd.to_datetime(df_fuel['date'])
     if 'series_type' in df_fuel.columns:
-        df_fuel = df_fuel[df_fuel['series_type'] == 'level'].coppy()
+        df_fuel = df_fuel[df_fuel['series_type'] == 'level'].copy()
 
     #3. Electricity Price (Monthly)
     df_elec = pd.read_parquet('https://storage.data.gov.my/energy/electricity_consumption.parquet')
